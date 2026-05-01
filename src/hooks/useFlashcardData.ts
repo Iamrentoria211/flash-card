@@ -2,17 +2,39 @@ import { useState, useEffect } from 'react';
 import { calculateNextReview, INITIAL_SRS_STATE } from '../utils/srs';
 import type { Deck, Card, Grade } from '../utils/srs';
 
-const STORAGE_KEY = 'flash-card-data';
+export interface SessionHistoryItem {
+  id: string;
+  completedAt: string;
+  itemCount: number;
+  status: 'completed' | 'skipped' | 'failed';
+}
+
+const STORAGE_KEY = 'flash-card-data-v2';
 
 export function useFlashcardData() {
-  const [decks, setDecks] = useState<Deck[]>(() => {
+  const [data, setData] = useState<{ decks: Deck[], history: SessionHistoryItem[] }>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    // Fallback to old key for migration
+    const oldSaved = localStorage.getItem('flash-card-data');
+    if (oldSaved) {
+      return { decks: JSON.parse(oldSaved), history: [] };
+    }
+    return { decks: [], history: [] };
   });
 
+  const decks = data.decks;
+  const sessionHistory = data.history;
+
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(decks));
-  }, [decks]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, [data]);
+
+  const setDecks = (newDecks: Deck[]) => {
+    setData(prev => ({ ...prev, decks: newDecks }));
+  };
 
   const addDeck = (name: string, description: string) => {
     const newDeck: Deck = {
@@ -81,20 +103,35 @@ export function useFlashcardData() {
     );
   };
 
+  const recordSession = (itemCount: number, status: SessionHistoryItem['status']) => {
+    const newSession: SessionHistoryItem = {
+      id: crypto.randomUUID(),
+      completedAt: new Date().toISOString(),
+      itemCount,
+      status,
+    };
+    setData(prev => ({
+      ...prev,
+      history: [newSession, ...prev.history].slice(0, 500) // Keep last 500 sessions
+    }));
+  };
+
   const exportData = () => {
-    const blob = new Blob([JSON.stringify(decks, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `flashcards-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `flashcards-backup-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const importData = (data: any) => {
+  const importData = (importedData: any) => {
     try {
-      if (Array.isArray(data)) {
-        setDecks(data);
+      if (importedData.decks && Array.isArray(importedData.decks)) {
+        setData(importedData);
+      } else if (Array.isArray(importedData)) {
+        setData({ decks: importedData, history: [] });
       }
     } catch (e) {
       console.error('Import failed', e);
@@ -103,12 +140,14 @@ export function useFlashcardData() {
 
   return {
     decks,
+    sessionHistory,
     addDeck,
     deleteDeck,
     addCard,
     updateCard,
     deleteCard,
     reviewCard,
+    recordSession,
     exportData,
     importData,
   };
