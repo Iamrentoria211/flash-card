@@ -3,7 +3,6 @@ import type { Deck } from '@/utils/srs';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { Plus, Library, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 

@@ -13,6 +13,7 @@ export interface Card {
   back: string;
   tags: string[];
   srs: SRSState;
+  sourceNoteId?: string; // ID of the note this card was extracted from
   createdAt: string;
 }
 
@@ -72,4 +73,13 @@ export function calculateNextReview(grade: Grade, srs: SRSState): SRSState {
     interval,
     nextReview: nextReviewDate.toISOString(),
   };
+}
+
+/**
+ * Calculates the mastery percentage of a deck (0-100)
+ */
+export function getDeckMastery(deck: Deck): number {
+  if (deck.cards.length === 0) return 100;
+  const masteredCards = deck.cards.filter(c => c.srs.repetitions >= 5).length;
+  return (masteredCards / deck.cards.length) * 100;
 }

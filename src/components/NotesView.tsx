@@ -14,7 +14,7 @@ import type { Deck } from '../utils/srs';
 interface NotesViewProps {
   notes: Note[];
   decks: Deck[];
-  onAddNote: (title: string, content: string, tags: string[]) => void;
+  onAddNote: (title: string, content: string, tags: string[]) => string;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onDeleteNote: (id: string) => void;
   onCreateCard: (deckId: string, front: string, back: string) => void;
@@ -148,7 +148,12 @@ export function NotesView({
 }: NotesViewProps) {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  
+  // Create Note Modal
+  const [isCreatingNote, setIsCreatingNote] = useState(false);
+  const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [newNoteTags, setNewNoteTags] = useState<string[]>([]);
+  const [newNoteTagInput, setNewNoteTagInput] = useState('');
 
   // Floating toolbar
   const [toolbar, setToolbar] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
@@ -200,22 +205,17 @@ export function NotesView({
   // ─── Save — always reads live from the DOM ref ──────────────────────────
   const handleSave = useCallback(() => {
     const currentContent = editorRef.current?.innerHTML ?? '';
-    if (!title.trim() && !currentContent.trim()) return;
+    if (!selectedNoteId || (!title.trim() && !currentContent.trim())) return;
 
-    if (isCreating) {
-      onAddNote(title || 'Untitled', currentContent, tags);
-      setIsCreating(false);
-    } else if (selectedNoteId) {
-      onUpdateNote(selectedNoteId, { title: title || 'Untitled', content: currentContent, tags });
-    }
-  }, [title, tags, isCreating, selectedNoteId, onAddNote, onUpdateNote]);
+    onUpdateNote(selectedNoteId, { title: title || 'Untitled', content: currentContent, tags });
+  }, [title, tags, selectedNoteId, onUpdateNote]);
 
-  // Auto-save debounce — no `content` state in deps
+  // Auto-save debounce
   useEffect(() => {
-    if (!selectedNoteId && !isCreating) return;
+    if (!selectedNoteId) return;
     const timer = setTimeout(handleSave, 1500);
     return () => clearTimeout(timer);
-  }, [title, tags, handleSave, selectedNoteId, isCreating]);
+  }, [title, tags, handleSave, selectedNoteId]);
 
   // Ctrl+S
   useEffect(() => {
@@ -228,15 +228,14 @@ export function NotesView({
 
   // ─── Load note into editor ONCE per note switch ─────────────────────────
   useEffect(() => {
-    const id = selectedNoteId ?? (isCreating ? '__new__' : null);
-    if (!id || lastLoadedNoteId.current === id) return;
-    lastLoadedNoteId.current = id;
+    if (!selectedNoteId || lastLoadedNoteId.current === selectedNoteId) return;
+    lastLoadedNoteId.current = selectedNoteId;
 
     if (editorRef.current) {
       const note = notes.find(n => n.id === selectedNoteId);
-      editorRef.current.innerHTML = isCreating ? '' : (note?.content ?? '');
+      editorRef.current.innerHTML = note?.content ?? '';
     }
-  }, [selectedNoteId, isCreating, notes]);
+  }, [selectedNoteId, notes]);
 
   // ─── Hide toolbar / slash on outside mousedown ──────────────────────────
   useEffect(() => {
@@ -363,7 +362,6 @@ export function NotesView({
       if (e.key === 'b') { e.preventDefault(); applyFormat('bold'); }
       if (e.key === 'i') { e.preventDefault(); applyFormat('italic'); }
       if (e.key === 'u') { e.preventDefault(); applyFormat('underline'); }
-      // Ctrl+Z / Ctrl+Y — let the browser handle natively, do NOT intercept
     }
   }, [slashMenu.visible, slashIndex, filteredSlashCommands]);
 
@@ -423,7 +421,7 @@ export function NotesView({
   const handleBridgeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (targetDeckId && bridgeFront.trim() && bridgeBack.trim()) {
-      onCreateCard(targetDeckId, bridgeFront, bridgeBack);
+      onCreateCard(targetDeckId, bridgeFront, bridgeBack, [], selectedNoteId || undefined);
       setIsBridging(false);
       setBridgeBack('');
     }
@@ -431,16 +429,28 @@ export function NotesView({
 
   // ─── Note switching ──────────────────────────────────────────────────────
   const startNewNote = () => {
+    setIsCreatingNote(true);
+    setNewNoteTitle('');
+    setNewNoteTags([]);
+    setNewNoteTagInput('');
+  };
+
+  const handleModalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteTitle.trim()) return;
+    
+    const id = onAddNote(newNoteTitle, '', newNoteTags);
+    setIsCreatingNote(false);
+    
+    // Select the new note
     lastLoadedNoteId.current = null;
-    setSelectedNoteId(null);
-    setIsCreating(true);
-    setTitle('');
-    setTags([]);
+    setSelectedNoteId(id);
+    setTitle(newNoteTitle);
+    setTags(newNoteTags);
   };
 
   const selectNote = (note: Note) => {
     lastLoadedNoteId.current = null;
-    setIsCreating(false);
     setSelectedNoteId(note.id);
     setTitle(note.title);
     setTags(note.tags || []);
@@ -579,7 +589,7 @@ export function NotesView({
 
           {/* ── Editor ── */}
           <div className="flex-1 min-w-0 bg-background flex flex-col overflow-hidden">
-            {(selectedNoteId || isCreating) ? (
+            {selectedNoteId ? (
               <>
                 {/* Top bar */}
                 <div className="h-12 px-6 flex items-center justify-between border-b border-border/40 shrink-0">
@@ -751,6 +761,77 @@ export function NotesView({
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* ── Create Note Modal ── */}
+      {isCreatingNote && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-background/40 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-full max-w-md rounded-2xl shadow-2xl border border-border/50 bg-background overflow-hidden animate-in zoom-in-95 duration-300">
+            <form onSubmit={handleModalSubmit}>
+              <div className="p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <FileText className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold tracking-tight">Create New Note</h3>
+                      <p className="text-[11px] text-muted-foreground font-medium">Start capturing your thoughts</p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setIsCreatingNote(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Title</p>
+                    <input
+                      autoFocus
+                      placeholder="e.g. Organic Chemistry Basics"
+                      value={newNoteTitle}
+                      onChange={e => setNewNoteTitle(e.target.value)}
+                      required
+                      className="w-full h-11 rounded-lg bg-zinc-100 dark:bg-zinc-900 border-none px-4 text-sm font-medium outline-none focus:ring-2 ring-primary/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Tags</p>
+                    <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-zinc-100 dark:bg-zinc-900 min-h-[44px]">
+                      {newNoteTags.map(tag => (
+                        <span key={tag} className="flex items-center gap-1 bg-background text-muted-foreground text-[10px] font-bold px-2 py-1 rounded-md">
+                          #{tag}
+                          <button type="button" onClick={() => setNewNoteTags(newNoteTags.filter(t => t !== tag))}><X className="h-2.5 w-2.5" /></button>
+                        </span>
+                      ))}
+                      <input
+                        placeholder="Add tag..."
+                        value={newNoteTagInput}
+                        onChange={e => setNewNoteTagInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && newNoteTagInput.trim()) {
+                            e.preventDefault();
+                            const tag = newNoteTagInput.trim().toLowerCase().replace(/^#/, '');
+                            if (!newNoteTags.includes(tag)) setNewNoteTags([...newNoteTags, tag]);
+                            setNewNoteTagInput('');
+                          }
+                        }}
+                        className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground/40 px-1 min-w-[100px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full h-11 rounded-lg font-bold shadow-lg shadow-primary/20"
+                  disabled={!newNoteTitle.trim()}
+                >
+                  Create Note
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

@@ -31,6 +31,7 @@ export function useNotesData() {
       updatedAt: new Date().toISOString(),
     };
     setNotes([newNote, ...notes]);
+    return newNote.id;
   };
 
   const updateNote = (id: string, updates: Partial<Note>) => {

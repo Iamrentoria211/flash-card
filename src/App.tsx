@@ -36,6 +36,7 @@ export default function App() {
     notes, addNote, updateNote, deleteNote
   } = useNotesData();
 
+
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
@@ -149,9 +150,9 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               className="rounded-full h-10 w-10 text-muted-foreground hover:text-foreground transition-all duration-300"
             >

@@ -51,13 +51,14 @@ export function useFlashcardData() {
     setDecks(decks.filter((d) => d.id !== deckId));
   };
 
-  const addCard = (deckId: string, front: string, back: string, tags: string[] = []) => {
+  const addCard = (deckId: string, front: string, back: string, tags: string[] = [], sourceNoteId?: string) => {
     const newCard: Card = {
       id: crypto.randomUUID(),
       front,
       back,
       tags,
       srs: { ...INITIAL_SRS_STATE },
+      sourceNoteId,
       createdAt: new Date().toISOString(),
     };
     setDecks(
